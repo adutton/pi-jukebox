@@ -3,6 +3,7 @@
 import fcntl
 import logging
 import os
+import random
 import re
 import sys
 import termios
@@ -22,7 +23,7 @@ from socket import gaierror
 # 91053 105.3 SPIRIT http://crista-kcms.streamguys1.com/kcmsmp3
 # 91065 106.5 PRAISE https://crista-kwpz.streamguys1.com/kwpzmp3
 
-SONG_PATTERN = re.compile(r'USB.+/(\d{3})-.*\.mp3')
+SONG_PATTERN = re.compile(r'(?:SDCARD|USB).*/(\d{3})-.*\.mp3')
 RADIO_PATTERN = re.compile(r'RADIO/(\d{3,4})-.*.pls')
 RANDOM_PLAY = "777"
 RADIO_PREFIX = "9"
@@ -32,13 +33,13 @@ class Jukebox():
     def __init__(self, server="localhost", port=6600):
         self.server = server
         self.port = port
+
         self.songs = []
         self.stations = []
         self.is_random_play = False
-        self.reset_key_queue()
+        self.key_queue = []
+
         self.mpd = None
-        self.volume = 0
-        self.is_running = True
 
     def get_status(self):
         status = None
@@ -78,9 +79,9 @@ class Jukebox():
         if not status:
             return False
 
-        self.volume = int(status['volume'])
+        volume = int(status['volume'])
 
-        logging.debug("Volume is set to {}".format(self.volume))
+        logging.debug("Volume is set to {}".format(volume))
         logging.debug("{} songs in queue".format(status['playlistlength']))
 
         # Set jukebox required settings
@@ -88,7 +89,7 @@ class Jukebox():
         self.mpd.single(0)
         self.mpd.random(0)
         self.mpd.repeat(0)
-        if self.volume > VOLUME_LIMIT:
+        if volume > VOLUME_LIMIT:
             self.mpd.setvol(VOLUME_LIMIT)
         if status['state'] != 'play':
             self.mpd.play()
@@ -108,10 +109,6 @@ class Jukebox():
             self.enqueue_song("000")
 
         return True
-
-    def exit(self):
-        self.close_connection()
-        self.is_running = False
 
     def close_connection(self):
         if self.mpd:
@@ -140,16 +137,16 @@ class Jukebox():
 
     def reset_key_queue(self):
         logging.debug("Reset key queue")
-        self.queue = []
+        self.key_queue = []
 
     def remove_key_from_queue(self):
         logging.debug("Removing key from queue")
-        self.queue = self.queue[:-1]
+        self.key_queue = self.key_queue[:-1]
 
     def add_key_to_queue(self, key):
         logging.debug("Add key to queue {}".format(key))
-        self.queue.append(key)
-        song = ''.join(self.queue)
+        self.key_queue.append(key)
+        song = ''.join(self.key_queue)
 
         # Radio stations start with a prefix
         if song[0] == RADIO_PREFIX:
@@ -225,16 +222,18 @@ class Jukebox():
             logging.info("Starting random play")
             self.is_random_play = True
 
-            status = self.get_status()
+            self.get_status()
 
-            # Delete everything off the list except the current song
-            self.mpd.clear()
+            # Add all songs except those in queue
+            queue = [record["file"] for record in self.mpd.playlistinfo()]
+            songs_to_add = [song for song in self.songs.values() if song not in queue]
 
-            for song in self.songs:
+            # Shuffle the songs
+            random.shuffle(songs_to_add)
+
+            for song in songs_to_add:
                 logging.debug("Enqueuing {}".format(song))
-                self.mpd.findadd("file", self.songs[song])
-
-            self.mpd.shuffle()
+                self.mpd.findadd("file", song)
 
             self.mpd.play()
 
@@ -243,8 +242,12 @@ class Jukebox():
             logging.info("Ending random play")
             self.is_random_play = False
 
-            self.get_status()
-            self.mpd.clear()
+            status = self.get_status()
+            if status["state"] == "play":
+                # Delete all songs except the first
+                self.mpd.delete((1,))
+            else:
+                self.mpd.clear()
 
     def play(self):
         status = self.get_status()
@@ -259,24 +262,24 @@ class Jukebox():
     def increase_volume(self):
         # Pull current volume from system
         status = self.get_status()
-        self.volume = int(status['volume'])
+        volume = int(status['volume'])
 
-        if self.volume < VOLUME_LIMIT:
-            self.volume += 1
-            logging.info("Increasing volume to {}".format(self.volume))
-            self.mpd.setvol(self.volume)
+        if volume < VOLUME_LIMIT:
+            volume += 1
+            logging.info("Increasing volume to {}".format(volume))
+            self.mpd.setvol(volume)
         else:
             self.mpd.setvol(VOLUME_LIMIT)
 
     def decrease_volume(self):
         # Pull current volume from system
         status = self.get_status()
-        self.volume = int(status['volume'])
+        volume = int(status['volume'])
 
-        if self.volume > 0:
-            self.volume -= 1
-            logging.info("Decreasing volume to {}".format(self.volume))
-            self.mpd.setvol(self.volume)
+        if volume > 0:
+            volume -= 1
+            logging.info("Decreasing volume to {}".format(volume))
+            self.mpd.setvol(volume)
         else:
             self.mpd.setvol(0)
 
@@ -309,7 +312,7 @@ def main(argv):
 
     logging.debug("Starting jukebox")
 
-    # Read server from command line
+    # Read server from command line as first argument
     server = "localhost"
     if len(argv) > 0:
         server = argv[0]
