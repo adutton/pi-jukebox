@@ -25,6 +25,7 @@ from socket import gaierror
 SONG_PATTERN = re.compile(r'USB.+/(\d{3})-.*\.mp3')
 RADIO_PATTERN = re.compile(r'RADIO/(\d{3,4})-.*.pls')
 RANDOM_PLAY = "777"
+RADIO_PREFIX = "9"
 
 class Jukebox():
     def __init__(self, server="localhost", port=6600):
@@ -92,7 +93,11 @@ class Jukebox():
         self.songs = {SONG_PATTERN.match(song)[1]: song for song in self.mpd.list('file') if SONG_PATTERN.match(song)}
         logging.info("Found {} jukebox songs".format(len(self.songs)))
 
-        self.stations = {RADIO_PATTERN.match(radio["playlist"])[1]: radio["playlist"] for radio in self.mpd.lsinfo("RADIO") if RADIO_PATTERN.match(radio["playlist"])}
+        rootls = self.mpd.lsinfo()
+        if "RADIO" in [entry.get("directory") for entry in rootls]:
+            self.stations = {RADIO_PATTERN.match(radio["playlist"])[1]: radio["playlist"] for radio in self.mpd.lsinfo("RADIO") if RADIO_PATTERN.match(radio["playlist"])}
+        else:
+            self.stations = []
         logging.info("Found {} radio stations".format(len(self.stations)))
 
         return True
@@ -139,8 +144,8 @@ class Jukebox():
         self.queue.append(key)
         song = ''.join(self.queue)
 
-        # Radio stations begin with 9
-        if song[0] == "9":
+        # Radio stations start with a prefix
+        if song[0] == RADIO_PREFIX:
             if len(song) > 3:
                 logging.debug("Trying to find station {}".format(song[1:]))
                 if self.enqueue_station(song[1:]) or len(song) >= 5:
