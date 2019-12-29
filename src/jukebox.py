@@ -9,15 +9,30 @@ import termios
 from mpd import MPDClient
 from socket import gaierror
 
-SONG_PATTERN = re.compile(r'USB.+/(\d{1,4})-.*\.mp3')
-RADIO_PATTERN = re.compile(r'RADIO/(\d{1,4})-.*.pls')
+# RADIO STATIONS
+# Found via https://radiostationusa.fm/states/washington
+# 9710 710 ESPN KIRO http://playerservices.streamtheworld.com/api/livestream-redirect/KIROAMAAC.aac
+# 9790 790 KGMI http://18683.live.streamtheworld.com/KGMIAMAAC.aac
+# 91000 1000 KOMO http://live.wostreaming.net/direct/sinclair-komoamaac-ibc2
+# 91170 1170 KPUG http://18683.live.streamtheworld.com/KPUGAMAAC.aac
+
+# 9929 92.9 KISM http://playerservices.streamtheworld.com/api/livestream-redirect/KISMFMAAC.aac
+# 9965 96.5 JACK http://c14icyelb.prod.playlists.ihrhls.com/7788_icy
+# 91043 104.3 KAFE http://playerservices.streamtheworld.com/api/livestream-redirect/KAFEFMAAC.aac
+# 91053 105.3 SPIRIT http://crista-kcms.streamguys1.com/kcmsmp3
+# 91065 106.5 PRAISE https://crista-kwpz.streamguys1.com/kwpzmp3
+
+SONG_PATTERN = re.compile(r'USB.+/(\d{3})-.*\.mp3')
+RADIO_PATTERN = re.compile(r'RADIO/(\d{3,4})-.*.pls')
+RANDOM_PLAY = "777"
 
 class Jukebox():
     def __init__(self, server="localhost", port=6600):
         self.server = server
         self.port = port
         self.songs = []
-        self.radios = []
+        self.stations = []
+        self.is_random_play = False
         self.reset_key_queue()
         self.mpd = None
         self.volume = 0
@@ -77,8 +92,8 @@ class Jukebox():
         self.songs = {SONG_PATTERN.match(song)[1]: song for song in self.mpd.list('file') if SONG_PATTERN.match(song)}
         logging.info("Found {} jukebox songs".format(len(self.songs)))
 
-        self.radios = {RADIO_PATTERN.match(radio["playlist"])[1]: radio["playlist"] for radio in self.mpd.lsinfo("RADIO") if RADIO_PATTERN.match(radio["playlist"])}
-        logging.info("Found {} radio stations".format(len(self.radios)))
+        self.stations = {RADIO_PATTERN.match(radio["playlist"])[1]: radio["playlist"] for radio in self.mpd.lsinfo("RADIO") if RADIO_PATTERN.match(radio["playlist"])}
+        logging.info("Found {} radio stations".format(len(self.stations)))
 
         return True
 
@@ -93,9 +108,9 @@ class Jukebox():
             self.mpd = None
 
     def handle_keyboard(self, key):
-        if key in "0123456789\n":
+        if key in "0123456789":
             self.add_key_to_queue(key)
-        elif ord(key) == 127:
+        elif ord(key) == 127: # Backspace
             self.remove_key_from_queue()
         elif key == "+":
             self.increase_volume()
@@ -103,7 +118,7 @@ class Jukebox():
             self.decrease_volume()
         elif key == "s" or key == "/":
             self.skip_song()
-        elif key == "r" or key == ".":
+        elif key == "r" or key == "\n":
             self.reset_key_queue()
         elif key == "i" or key == "*":
             self.close_connection()
@@ -120,38 +135,30 @@ class Jukebox():
         self.queue = self.queue[:-1]
 
     def add_key_to_queue(self, key):
-        if key != "\n":
-            logging.debug("Add key to queue {}".format(key))
-            self.queue.append(key)
-        else:
-            song = ''.join(self.queue)
-            logging.debug("Trying to find song {}".format(song))
+        logging.debug("Add key to queue {}".format(key))
+        self.queue.append(key)
+        song = ''.join(self.queue)
+
+        # Radio stations begin with 9
+        if song[0] == "9":
+            if len(song) > 3:
+                logging.debug("Trying to find station {}".format(song[1:]))
+                if self.enqueue_station(song[1:]) or len(song) >= 5:
+                    self.reset_key_queue()
+        elif len(song) == 3:
             self.reset_key_queue()
+            if self.is_random_play:
+                self.end_random_play()
+
+            if (song == RANDOM_PLAY):
+                if not self.is_random_play:
+                    self.start_random_play()
+                return
+            logging.debug("Trying to find song {}".format(song))
             self.enqueue_song(song)
 
     def enqueue_song(self, number):
         logging.debug("Finding song {} to enqueue".format(number))
-
-        if number in self.radios:
-            logging.debug("Found station {}".format(self.radios[number]))
-
-            # Make sure this station isn't on the queue
-            status = self.get_status()
-
-            if int(status["playlistlength"]) > 0:
-                queue = [record["file"] for record in self.mpd.playlistinfo()]
-                station_url = self.mpd.listplaylistinfo(self.radios[number])[0]["file"]
-
-                if station_url in queue:
-                    logging.info("Did not queue station because it's already in queue")
-                    return False
-
-            logging.debug("Enqueuing {}".format(self.radios[number]))
-            self.mpd.load(self.radios[number])
-            if status["state"] != "play":
-                self.mpd.play()
-
-            return True
 
         if number in self.songs:
             logging.debug("Found song {}".format(self.songs[number]))
@@ -173,6 +180,59 @@ class Jukebox():
         else:
             logging.debug("Could not locate the song")
             return False
+
+    def enqueue_station(self, number):
+        logging.debug("Finding station {} to enqueue".format(number))
+
+        if number in self.stations:
+            logging.debug("Found station {}".format(self.stations[number]))
+
+            # Make sure this station isn't on the queue
+            status = self.get_status()
+
+            if int(status["playlistlength"]) > 0:
+                queue = [record["file"] for record in self.mpd.playlistinfo()]
+                station_url = self.mpd.listplaylistinfo(self.stations[number])[0]["file"]
+
+                if station_url in queue:
+                    logging.info("Did not queue station because it's already in queue")
+                    return False
+
+            logging.debug("Enqueuing {}".format(self.stations[number]))
+            self.mpd.load(self.stations[number])
+            if status["state"] != "play":
+                self.mpd.play()
+
+            return True
+        else:
+            logging.debug("Could not locate the station")
+            return False
+
+    def start_random_play(self):
+        if not self.is_random_play:
+            logging.info("Starting random play")
+            self.is_random_play = True
+
+            status = self.get_status()
+
+            # Delete everything off the list except the current song
+            self.mpd.clear()
+
+            for song in self.songs:
+                logging.debug("Enqueuing {}".format(song))
+                self.mpd.findadd("file", self.songs[song])
+
+            self.mpd.shuffle()
+
+            self.mpd.play()
+
+    def end_random_play(self):
+        if self.is_random_play:
+            logging.info("Ending random play")
+            self.is_random_play = False
+
+            self.get_status()
+            self.mpd.clear()
 
     def play(self):
         status = self.get_status()
@@ -238,7 +298,6 @@ def main(argv):
     logging.debug("Starting jukebox")
 
     # Read server from command line
-    # TODO: Read from configuration file?
     server = "localhost"
     if len(argv) > 0:
         server = argv[0]
