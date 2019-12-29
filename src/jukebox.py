@@ -37,6 +37,7 @@ class Jukebox():
         self.songs = []
         self.stations = []
         self.is_random_play = False
+        self.is_radio_play = False
         self.key_queue = []
 
         self.mpd = None
@@ -104,6 +105,10 @@ class Jukebox():
             self.stations = []
         logging.info("Found {} radio stations".format(len(self.stations)))
 
+        # TODO: In the future we might be able to detect these states
+        self.is_random_play = False
+        self.is_radio_play = False
+
         # Enqueue startup song, if it exists
         if status["playlistlength"] == "0":
             self.enqueue_song("000")
@@ -156,13 +161,19 @@ class Jukebox():
                     self.reset_key_queue()
         elif len(song) == 3:
             self.reset_key_queue()
+            if self.is_radio_play:
+                self.end_radio_play()
+
+            if (song == RANDOM_PLAY):
+                if self.is_random_play:
+                    self.end_random_play()
+                else:
+                    self.start_random_play()
+                return
+
             if self.is_random_play:
                 self.end_random_play()
 
-            if (song == RANDOM_PLAY):
-                if not self.is_random_play:
-                    self.start_random_play()
-                return
             logging.debug("Trying to find song {}".format(song))
             self.enqueue_song(song)
 
@@ -196,26 +207,25 @@ class Jukebox():
         if number in self.stations:
             logging.debug("Found station {}".format(self.stations[number]))
 
-            # Make sure this station isn't on the queue
             status = self.get_status()
-
-            if int(status["playlistlength"]) > 0:
-                queue = [record["file"] for record in self.mpd.playlistinfo()]
-                station_url = self.mpd.listplaylistinfo(self.stations[number])[0]["file"]
-
-                if station_url in queue:
-                    logging.info("Did not queue station because it's already in queue")
-                    return False
+            self.mpd.clear()
 
             logging.debug("Enqueuing {}".format(self.stations[number]))
             self.mpd.load(self.stations[number])
             if status["state"] != "play":
                 self.mpd.play()
 
+            self.is_radio_play = True
+
             return True
         else:
             logging.debug("Could not locate the station")
             return False
+
+    def end_radio_play(self):
+        self.is_radio_play = False
+        self.get_status()
+        self.mpd.clear()
 
     def start_random_play(self):
         if not self.is_random_play:
