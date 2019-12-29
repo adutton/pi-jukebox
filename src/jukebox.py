@@ -26,6 +26,7 @@ SONG_PATTERN = re.compile(r'USB.+/(\d{3})-.*\.mp3')
 RADIO_PATTERN = re.compile(r'RADIO/(\d{3,4})-.*.pls')
 RANDOM_PLAY = "777"
 RADIO_PREFIX = "9"
+VOLUME_LIMIT = 35
 
 class Jukebox():
     def __init__(self, server="localhost", port=6600):
@@ -87,6 +88,8 @@ class Jukebox():
         self.mpd.single(0)
         self.mpd.random(0)
         self.mpd.repeat(0)
+        if self.volume > VOLUME_LIMIT:
+            self.mpd.setvol(VOLUME_LIMIT)
         if status['state'] != 'play':
             self.mpd.play()
 
@@ -254,12 +257,12 @@ class Jukebox():
         status = self.get_status()
         self.volume = int(status['volume'])
 
-        if self.volume < 100:
+        if self.volume < VOLUME_LIMIT:
             self.volume += 1
             logging.info("Increasing volume to {}".format(self.volume))
             self.mpd.setvol(self.volume)
         else:
-            self.mpd.setvol(100)
+            self.mpd.setvol(VOLUME_LIMIT)
 
     def decrease_volume(self):
         # Pull current volume from system
