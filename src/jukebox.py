@@ -103,6 +103,10 @@ class Jukebox():
             self.stations = []
         logging.info("Found {} radio stations".format(len(self.stations)))
 
+        # Enqueue startup song, if it exists
+        if status["playlistlength"] == "0":
+            self.enqueue_song("000")
+
         return True
 
     def exit(self):
