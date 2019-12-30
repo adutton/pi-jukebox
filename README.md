@@ -1,5 +1,7 @@
 # Pi Jukebox
-This project seeks to recreate the internals of a 1960s Seeburg Select-o-matic LS325 using a Raspberry Pi.
+This project seeks to replace the internals of a 1960s Seeburg Select-o-matic LS325 using a Raspberry Pi.
+
+I am documenting this process mostly for my own reference.  If you have clarifying questions, I'd love to answer them through this repository.
 
 Ingredients:
 * Seeburg Select-o-matic LS325
@@ -8,17 +10,24 @@ Ingredients:
 * External drive (USB) for song storage (option)
 * Audio cable - 3.5mm to red/white RCA jacks
 
+## Project philosophy
+My father-in-law has an old Seeburg jukebox that plays 45s (vinyl) but has been in disrepair on and off over the past few years.  I wanted to attempt to replace the moving internal mechanisms with a fully digital system.  I didn't want to actually remove or damage anything that would change the potential value of the jukebox.
+
+I was worried about internet access based on the location.  I wanted a self-contained system that could operate without internet if needed.  This didn't mean that I couldn't use the internet but I didn't want it to be critical to the system.
+
+The jukebox itself doesn't have much of a user interface.  There is a 11 key keypad (0 through 9 plus two idential RESET buttons) for input.  I replicate this with a numeric keypad which has a couple extra keys and a NUMLOCK light.  For output, the jukebox has a "currently playing" numeric output, three lights for the three digits you have entered, and some coin-related lights and slots (all of which I am ignoring for this project).
+
+I am familiar with Python and I had an extra Raspberry Pi.  I decided to find a Raspberry Pi-friendly linux distribution that could run Python3.
+
+I tried Pi Musicbox, but was discouraged by the older packages that were installed.  Then I tried just running MPD (Music Player Daemon) on a Raspbian Lite (Buster) but that required more tweaking and tuning than I wanted.
+
+I landed on the Moode distribution which is Raspberry Pi-friendly and is also Python3-based.
+
 # Install Moode
-I wanted a Raspberry Pi-friendly linux distribution that could run Python3.
-
-I tried Pi Jukebox, but was discouraged by the older packages that were installed.
- Then I tried just running MPD on a Raspbian Lite (Buster) but that required more tweaking and tuning than I wanted to use.
-
-I landed on the Moode distribution which happened to be Python3-based.  http://moodeaudio.org/
-
-It is a bit weird to setup because it's intended to be totally headless.
+The distribution is a bit weird to setup because it's intended to be totally headless.  Follow the steps on http://moodeaudio.org/
 
 ## Configuration
+Here are the settings I changed while setting up Moode.  These are mostly for my own reference.
 
 ### Network Config
 * SSID
@@ -46,35 +55,33 @@ It is a bit weird to setup because it's intended to be totally headless.
 
 Reboot
 
-To use the 3.5mm jack:
-* Run `sudo raspi-config` and set "Audio Output" to "Force 3.5mm"
-
+### Random configuration required
+* To use the 3.5mm jack run `sudo raspi-config` and set "Audio Output" to "Force 3.5mm"
 * Prevent the blank screen from popping up
 Edit `/home/pi/.xinitrc` and comment out the line starting with
 ```
 chromium-browser ...
 ```
-
-Turn on HDMI by editing `sudo nano /boot/config.txt` and commenting out the `hdmi_blanking` line.
-
-Configure startup settings to autologin to console:
+* Turn on HDMI display by editing `sudo nano /boot/config.txt` and commenting out the `hdmi_blanking` line.
+* Configure startup settings to autologin to console:
 https://www.opentechguides.com/how-to/article/raspberry-pi/134/raspbian-jessie-autologin.html
-
-Run `setup.sh` to install prequisites and set up the autorunning of the `jukebox.py`.
+* Run `setup.sh` to install prequisites and set up the autorunning of the `jukebox.py`.
+* I also installed `mpc`, a command-line tool for working with MPD via `pip3 install mpc`
 
 ## Music
 
 ### Add music
-Put music on a USB key, you may have to rescan in MPD to pick up the new songs.  Music should be prefixed with three digits and a dash `###-Song name.mp3`.  Music can be located on the internal SD card or the 
+Put music on a USB key or the SDCARD itself, you may have to rescan in MPD to pick up the new songs.  Music should be prefixed with three digits and a dash `###-Song name.mp3`.
 
 ### Add radio stations
 Add local radio stations using the web interface.  Name the radio stations `###-Station name`.  You can use 3 or 4 digits for the station.
 
 ## Use
-To play a song, just type the three-digit number prefixed to the song name.
+To queue up a song, just type the three-digit number prefixed to the song name.
 
-To play radio stations, start with 9, then the 3-4 digit station number.  Stations will be added to the queue but will never advance.  You'll need to skip the station to move to the next.
+To play radio stations, start with 9, then the 3-4 digit station number.  Playing a station will delete the queue.  Adding a song to the queue will stop the radio station and immediately start the song.
 
+### Controls
 * Skip - `/` or `s`
 * Increase volume - `+`
 * Decrease volume - `-`
@@ -84,9 +91,13 @@ To play radio stations, start with 9, then the 3-4 digit station number.  Statio
 * Quit - `q`
 
 ### Random play
-777
+Entering `777` will start random play mode.  Basically every song that is not currently on the queue will be added to the queue randomly.  This is great if you don't want to pick out songs and just want to listen to your music.  Enqueuing any song will clear everything off the queue except the currently playing song, turning random play off without disrupting the current song.
+
 ### Startup song
-000
+When you start the jukebox system up and there is nothing in the queue, the startup song will be played.  To create a startup song, just prefix the song with the `000-`. 
+
+# Future improvements
+Currently the system relies on a USB numeric keypad.  In the future, I'd like to use the actual buttons on the jukebox for input and the lighting system for the display.
 
 # References
 

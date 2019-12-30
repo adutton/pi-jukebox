@@ -23,7 +23,13 @@ from socket import gaierror
 # 91053 105.3 SPIRIT http://crista-kcms.streamguys1.com/kcmsmp3
 # 91065 106.5 PRAISE https://crista-kwpz.streamguys1.com/kwpzmp3
 
-SONG_PATTERN = re.compile(r'(?:SDCARD|USB).*/(\d{3})-.*\.mp3')
+# Found via https://www.radio.net/genre/70s
+# 91990 90s Hits HitsRadio http://playerservices.streamtheworld.com/api/livestream-redirect/977_90.mp3
+# 91980 80s Planet http://80s.streamthenet.com:8888/stream/1/
+# 91970 America's Greatest 70s Hits http://hydra.cdnstream.com/1823_128
+# 91960 60s http://60s.streamthenet.com:8888/stream/1/
+
+SONG_PATTERN = re.compile(r'(?:SDCARD|USB).*/(\d{3})-.*\..+')
 RADIO_PATTERN = re.compile(r'RADIO/(\d{3,4})-.*.pls')
 RANDOM_PLAY = "777"
 RADIO_PREFIX = "9"
