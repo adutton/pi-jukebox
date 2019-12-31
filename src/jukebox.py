@@ -1,14 +1,12 @@
 #!/usr/bin/python3
 
-import fcntl
 import logging
-import os
 import random
 import re
 import sys
 import termios
-from mpd import MPDClient
 from socket import gaierror
+from mpd import MPDClient
 
 # RADIO STATIONS
 # Found via https://radiostationusa.fm/states/washington
@@ -32,8 +30,10 @@ from socket import gaierror
 SONG_PATTERN = re.compile(r'(?:SDCARD|USB).*/(\d{3})-.*\..+')
 RADIO_PATTERN = re.compile(r'RADIO/(\d{3,4})-.*.pls')
 RANDOM_PLAY = "777"
+STARTUP_SONG = "623"
 RADIO_PREFIX = "9"
 VOLUME_LIMIT = 35
+CONNECT_TIMEOUT_SECONDS = 5
 
 class Jukebox():
     def __init__(self, server="localhost", port=6600):
@@ -51,20 +51,20 @@ class Jukebox():
     def get_status(self):
         status = None
 
-        if self.mpd != None:
+        if self.mpd is not None:
             try:
                 status = self.mpd.status()
             except:
                 self.mpd.disconnect()
                 self.mpd = None
 
-        if self.mpd != None:
+        if self.mpd is not None:
             return status
 
         self.mpd = MPDClient()
-        TIMEOUT_SECONDS = 1
+        self.mpd.timeout = CONNECT_TIMEOUT_SECONDS
         try:
-            self.mpd.connect(host=self.server, port=self.port, timeout=TIMEOUT_SECONDS)
+            self.mpd.connect(host=self.server, port=self.port)
             status = self.mpd.status()
         except gaierror:
             logging.error("Could not connect to server, does the server name exist?")
@@ -76,11 +76,11 @@ class Jukebox():
             logging.exception(ex)
             return None
 
-        logging.info("Connected to MPD version {}".format(self.mpd.mpd_version))
+        logging.info("Connected to MPD version %s", self.mpd.mpd_version)
         return status
 
     def initialize_connection(self):
-        logging.debug("Checking to see if connection to {}:{} can be established".format(self.server, self.port))
+        logging.debug("Checking to see if connection to %s:%i can be established", self.server, self.port)
         status = self.get_status()
 
         if not status:
@@ -88,8 +88,8 @@ class Jukebox():
 
         volume = int(status['volume'])
 
-        logging.debug("Volume is set to {}".format(volume))
-        logging.debug("{} songs in queue".format(status['playlistlength']))
+        logging.debug("Volume is set to %i", volume)
+        logging.debug("%s songs in queue", status['playlistlength'])
 
         # Set jukebox required settings
         self.mpd.consume(1)
@@ -102,14 +102,14 @@ class Jukebox():
             self.mpd.play()
 
         self.songs = {SONG_PATTERN.match(song)[1]: song for song in self.mpd.list('file') if SONG_PATTERN.match(song)}
-        logging.info("Found {} jukebox songs".format(len(self.songs)))
+        logging.info("Found %i jukebox songs", len(self.songs))
 
         rootls = self.mpd.lsinfo()
         if "RADIO" in [entry.get("directory") for entry in rootls]:
             self.stations = {RADIO_PATTERN.match(radio["playlist"])[1]: radio["playlist"] for radio in self.mpd.lsinfo("RADIO") if RADIO_PATTERN.match(radio["playlist"])}
         else:
             self.stations = []
-        logging.info("Found {} radio stations".format(len(self.stations)))
+        logging.info("Found %i radio stations", len(self.stations))
 
         # TODO: In the future we might be able to detect these states
         self.is_random_play = False
@@ -117,7 +117,7 @@ class Jukebox():
 
         # Enqueue startup song, if it exists
         if status["playlistlength"] == "0":
-            self.enqueue_song("000")
+            self.enqueue_song(STARTUP_SONG)
 
         return True
 
@@ -144,7 +144,7 @@ class Jukebox():
             self.close_connection()
             self.initialize_connection()
         else:
-            logging.debug("Ignoring keyboard {}".format(str(ord(key))))
+            logging.debug("Ignoring keyboard %i", ord(key))
 
     def reset_key_queue(self):
         logging.debug("Reset key queue")
@@ -155,14 +155,14 @@ class Jukebox():
         self.key_queue = self.key_queue[:-1]
 
     def add_key_to_queue(self, key):
-        logging.debug("Add key to queue {}".format(key))
+        logging.debug("Add key to queue %s", key)
         self.key_queue.append(key)
         song = ''.join(self.key_queue)
 
         # Radio stations start with a prefix
         if song[0] == RADIO_PREFIX:
             if len(song) > 3:
-                logging.debug("Trying to find station {}".format(song[1:]))
+                logging.debug("Trying to find station %s", song[1:])
                 if self.enqueue_station(song[1:]) or len(song) >= 5:
                     self.reset_key_queue()
         elif len(song) == 3:
@@ -170,7 +170,7 @@ class Jukebox():
             if self.is_radio_play:
                 self.end_radio_play()
 
-            if (song == RANDOM_PLAY):
+            if song == RANDOM_PLAY:
                 if self.is_random_play:
                     self.end_random_play()
                 else:
@@ -180,14 +180,14 @@ class Jukebox():
             if self.is_random_play:
                 self.end_random_play()
 
-            logging.debug("Trying to find song {}".format(song))
+            logging.debug("Trying to find song %s", song)
             self.enqueue_song(song)
 
     def enqueue_song(self, number):
-        logging.debug("Finding song {} to enqueue".format(number))
+        logging.debug("Finding song %s to enqueue", number)
 
         if number in self.songs:
-            logging.debug("Found song {}".format(self.songs[number]))
+            logging.debug("Found song %s", self.songs[number])
 
             # Make sure this song isn't already on queue
             status = self.get_status()
@@ -198,7 +198,7 @@ class Jukebox():
                     logging.info("Did not queue song because it's already in queue")
                     return False
 
-            logging.debug("Enqueuing {}".format(self.songs[number]))
+            logging.debug("Enqueuing %s", self.songs[number])
             self.mpd.findadd("file", self.songs[number])
             if status["state"] != "play":
                 self.mpd.play()
@@ -208,15 +208,15 @@ class Jukebox():
             return False
 
     def enqueue_station(self, number):
-        logging.debug("Finding station {} to enqueue".format(number))
+        logging.debug("Finding station %s to enqueue", number)
 
         if number in self.stations:
-            logging.debug("Found station {}".format(self.stations[number]))
+            logging.debug("Found station %s", self.stations[number])
 
             status = self.get_status()
             self.mpd.clear()
 
-            logging.debug("Enqueuing {}".format(self.stations[number]))
+            logging.debug("Enqueuing %s", self.stations[number])
             self.mpd.load(self.stations[number])
             if status["state"] != "play":
                 self.mpd.play()
@@ -224,9 +224,9 @@ class Jukebox():
             self.is_radio_play = True
 
             return True
-        else:
-            logging.debug("Could not locate the station")
-            return False
+
+        logging.debug("Could not locate the station")
+        return False
 
     def end_radio_play(self):
         self.is_radio_play = False
@@ -248,7 +248,7 @@ class Jukebox():
             random.shuffle(songs_to_add)
 
             for song in songs_to_add:
-                logging.debug("Enqueuing {}".format(song))
+                logging.debug("Enqueuing %s", song)
                 self.mpd.findadd("file", song)
 
             self.mpd.play()
@@ -282,7 +282,7 @@ class Jukebox():
 
         if volume < VOLUME_LIMIT:
             volume += 1
-            logging.info("Increasing volume to {}".format(volume))
+            logging.info("Increasing volume to %i", volume)
             self.mpd.setvol(volume)
         else:
             self.mpd.setvol(VOLUME_LIMIT)
@@ -294,10 +294,11 @@ class Jukebox():
 
         if volume > 0:
             volume -= 1
-            logging.info("Decreasing volume to {}".format(volume))
+            logging.info("Decreasing volume to %i", volume)
             self.mpd.setvol(volume)
         else:
             self.mpd.setvol(0)
+
 
 def get_char_keyboard():
     fd = sys.stdin.fileno()
@@ -316,6 +317,7 @@ def get_char_keyboard():
         termios.tcsetattr(fd, termios.TCSAFLUSH, oldterm)
 
     return c
+
 
 def main(argv):
     root = logging.getLogger()
@@ -339,14 +341,14 @@ def main(argv):
         return
 
     key = get_char_keyboard()
-    while (key != "q"):
-        for c in key:
-            j.handle_keyboard(c)
+    while key != "q":
+        j.handle_keyboard(key)
         key = get_char_keyboard()
 
     logging.debug("Stopping jukebox")
     j.close_connection()
     sys.exit(0)
+
 
 if __name__ == "__main__":
     main(sys.argv[1:])
