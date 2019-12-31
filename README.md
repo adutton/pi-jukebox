@@ -91,10 +91,10 @@ To play radio stations, start with 9, then the 3-4 digit station number.  Playin
 * Quit - `q`
 
 ### Random play
-Entering `777` will start random play mode.  Basically every song that is not currently on the queue will be added to the queue randomly.  This is great if you don't want to pick out songs and just want to listen to your music.  Enqueuing any song will clear everything off the queue except the currently playing song, turning random play off without disrupting the current song.
+Entering `777` will start random play mode.  Basically every song that is not currently on the queue will be added to the queue randomly.  This is great if you don't want to pick out songs and just want to listen to your music.  To turn off random play, enqueue any song.  This will clear everything off the queue except the currently playing song, turning random play off without disrupting the current song.
 
 ### Startup song
-When you start the jukebox system up and there is nothing in the queue, the startup song will be played.  To create a startup song, just prefix the song with the `000-`. 
+When you start the jukebox system up and there is nothing in the queue, the startup song will be played.  To create a startup song, just prefix the song with `000` as the number. 
 
 # Future improvements
 Currently the system relies on a USB numeric keypad.  In the future, I'd like to use the actual buttons on the jukebox for input and the lighting system for the display.
